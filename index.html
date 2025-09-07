@@ -1,15 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Free File Hosting</title>
+    <title>GitHub File Hosting</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         .upload-area { border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 20px 0; }
         .url-display { margin-top: 20px; word-break: break-all; }
+        .loading { display: none; color: blue; }
     </style>
 </head>
 <body>
-    <h1>Free File Hosting</h1>
+    <h1>GitHub File Hosting</h1>
     
     <div class="upload-area" id="dropZone">
         <p>ファイルをドラッグ＆ドロップまたはクリックして選択</p>
@@ -17,19 +18,22 @@
         <button onclick="document.getElementById('fileInput').click()">ファイルを選択</button>
     </div>
 
-    <div id="urlDisplay" class="url-display" style="display: none;">
-        <h3>アップロード完了！</h3>
-        <p>URL: <a id="fileUrl" target="_blank"></a></p>
-        <button onclick="copyUrl()">URLをコピー</button>
+    <div id="loading" class="loading">
+        <p>アップロード中... Issueが作成されるまでお待ちください</p>
+    </div>
+
+    <div id="issueLink" style="display: none; margin-top: 20px;">
+        <p>アップロード処理中: <a id="issueUrl" target="_blank"></a></p>
+        <p>数分後に自動的にURLが表示されます</p>
     </div>
 
     <script>
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const urlDisplay = document.getElementById('urlDisplay');
-        const fileUrl = document.getElementById('fileUrl');
+        const loading = document.getElementById('loading');
+        const issueLink = document.getElementById('issueLink');
+        const issueUrl = document.getElementById('issueUrl');
 
-        // ドラッグ＆ドロップの処理
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.style.backgroundColor = '#f0f0f0';
@@ -51,43 +55,33 @@
 
         async function handleFiles(files) {
             for (let file of files) {
-                await uploadFile(file);
+                await createUploadIssue(file);
             }
         }
 
-        async function uploadFile(file) {
-            const formData = new FormData();
-            formData.append('file', file);
-
+        async function createUploadIssue(file) {
             try {
-                // GitHub APIを使用してアップロード
-                const response = await fetch(
-                    `https://api.github.com/repos/${getRepoPath()}/contents/uploads/${getFileType(file.type)}/${file.name}`,
-                    {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `token ${getAccessToken()}`,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            message: `Add ${file.name}`,
-                            content: await toBase64(file)
-                        })
-                    }
-                );
-
-                if (response.ok) {
-                    const data = await response.json();
-                    const rawUrl = data.content.download_url
-                        .replace('github.com', 'raw.githubusercontent.com')
-                        .replace('/blob/', '/');
-                    
-                    fileUrl.href = rawUrl;
-                    fileUrl.textContent = rawUrl;
-                    urlDisplay.style.display = 'block';
-                }
+                loading.style.display = 'block';
+                
+                const base64Data = await toBase64(file);
+                const repoPath = window.location.pathname.split('/').slice(1, 3).join('/');
+                
+                // GitHubのIssue作成ページにリダイレクト
+                const issueUrl = `https://github.com/${repoPath}/issues/new?template=upload.md&title=Upload: ${encodeURIComponent(file.name)}`;
+                
+                // フォームデータをlocalStorageに一時保存
+                localStorage.setItem('uploadFileData', base64Data);
+                localStorage.setItem('uploadFileName', file.name);
+                
+                window.open(issueUrl, '_blank');
+                
+                issueUrl.href = issueUrl;
+                issueUrl.textContent = issueUrl;
+                issueLink.style.display = 'block';
+                
             } catch (error) {
-                console.error('Upload error:', error);
+                console.error('Error:', error);
+                alert('エラーが発生しました');
             }
         }
 
@@ -95,31 +89,28 @@
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onload = () => resolve(reader.result);
                 reader.onerror = error => reject(error);
             });
         }
 
-        function getRepoPath() {
-            // リポジトリパスを取得（手動設定が必要）
-            return 'your-username/your-repo';
-        }
-
-        function getAccessToken() {
-            // 個人アクセストークン（要設定）
-            return 'your-github-token';
-        }
-
-        function getFileType(mimeType) {
-            if (mimeType.startsWith('image/')) return 'images';
-            if (mimeType.startsWith('video/')) return 'videos';
-            return 'files';
-        }
-
-        function copyUrl() {
-            navigator.clipboard.writeText(fileUrl.href);
-            alert('URLをコピーしました！');
-        }
+        // ページ読み込み時に保存されたデータがある場合、自動入力
+        window.addEventListener('load', () => {
+            const savedData = localStorage.getItem('uploadFileData');
+            const savedName = localStorage.getItem('uploadFileName');
+            
+            if (savedData && savedName) {
+                localStorage.removeItem('uploadFileData');
+                localStorage.removeItem('uploadFileName');
+                
+                // ユーザーに確認
+                if (confirm('前回のアップロードデータがあります。Issueページを開きますか？')) {
+                    const repoPath = window.location.pathname.split('/').slice(1, 3).join('/');
+                    const issueUrl = `https://github.com/${repoPath}/issues/new?template=upload.md&title=Upload: ${encodeURIComponent(savedName)}`;
+                    window.open(issueUrl, '_blank');
+                }
+            }
+        });
     </script>
 </body>
 </html>
