@@ -1,0 +1,83 @@
+name: Process File Upload from Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  process-upload:
+    if: contains(github.event.issue.labels.*.name, 'upload')
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Extract file data from issue
+      id: extract_data
+      run: |
+        # Issue本文からファイルデータとファイル名を抽出
+        BODY="${{ github.event.issue.body }}"
+        FILE_DATA=$(echo "$BODY" | grep -A1 'file_data' | tail -n1 | sed 's/^### file_data\\?//' | sed 's/^### //' | sed 's/^**//' | sed 's/**$//' | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        FILE_NAME=$(echo "$BODY" | grep -A1 'file_name' | tail -n1 | sed 's/^### file_name\\?//' | sed 's/^### //' | sed 's/^**//' | sed 's/**$//' | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        # Base64データのみを抽出（data:xxx;base64, の部分を除去）
+        CLEAN_DATA=$(echo "$FILE_DATA" | sed 's/^data:[^;]*;base64,//')
+        
+        echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
+        echo "file_data=$CLEAN_DATA" >> $GITHUB_OUTPUT
+        
+        echo "Extracted file: $FILE_NAME"
+        echo "Data length: ${#CLEAN_DATA}"
+
+    - name: Create file
+      run: |
+        # ファイルタイプに基づいてフォルダを決定
+        FILE_NAME="${{ steps.extract_data.outputs.file_name }}"
+        if [[ "$FILE_NAME" == *.jpg ]] || [[ "$FILE_NAME" == *.jpeg ]] || [[ "$FILE_NAME" == *.png ]] || [[ "$FILE_NAME" == *.gif ]] || [[ "$FILE_NAME" == *.webp ]]; then
+          FOLDER="images"
+        elif [[ "$FILE_NAME" == *.mp4 ]] || [[ "$FILE_NAME" == *.webm ]] || [[ "$FILE_NAME" == *.mov ]]; then
+          FOLDER="videos"
+        else
+          FOLDER="files"
+        fi
+        
+        # Base64データをデコードしてファイルを作成
+        echo "${{ steps.extract_data.outputs.file_data }}" | base64 -d > "uploads/$FOLDER/$FILE_NAME"
+        
+        echo "Created file: uploads/$FOLDER/$FILE_NAME"
+
+    - name: Commit and push
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add uploads/
+        git commit -m "Add uploaded file: ${{ steps.extract_data.outputs.file_name }}"
+        git push
+
+    - name: Create comment with URL
+      run: |
+        FILE_NAME="${{ steps.extract_data.outputs.file_name }}"
+        if [[ "$FILE_NAME" == *.jpg ]] || [[ "$FILE_NAME" == *.jpeg ]] || [[ "$FILE_NAME" == *.png ]] || [[ "$FILE_NAME" == *.gif ]] || [[ "$FILE_NAME" == *.webp ]]; then
+          FOLDER="images"
+        elif [[ "$FILE_NAME" == *.mp4 ]] || [[ "$FILE_NAME" == *.webm ]] || [[ "$FILE_NAME" == *.mov ]]; then
+          FOLDER="videos"
+        else
+          FOLDER="files"
+        fi
+        
+        URL="https://raw.githubusercontent.com/${{ github.repository }}/main/uploads/$FOLDER/$FILE_NAME"
+        
+        # IssueにコメントとしてURLを投稿
+        curl -s -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
+          -d "{\"body\": \"ファイルがアップロードされました！\\n\\n**URL:** \\n\\`$URL\\`\\n\\n**プレビュー:** \\n![Preview]($URL)\"}"
+
+    - name: Close issue
+      run: |
+        curl -s -X PATCH \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }} \
+          -d '{"state": "closed"}'
