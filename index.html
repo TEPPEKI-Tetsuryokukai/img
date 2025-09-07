@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>GitHub File Hosting</title>
+    <meta name="github-repo" content="TEPPEKI-Tetsuryokukai/img">
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         .upload-area { border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 20px 0; }
@@ -70,11 +71,72 @@
 
         async function handleFiles(files) {
             for (let file of files) {
-                if (file.size > 25 * 1024 * 1024) { // 25MB制限
+                if (file.size > 25 * 1024 * 1024) {
                     alert(`ファイルサイズが大きすぎます: ${file.name} (最大25MB)`);
                     continue;
                 }
                 await createUploadIssue(file);
+            }
+        }
+
+        function getRepoPath() {
+            // 方法1: metaタグから取得
+            const metaRepo = document.querySelector('meta[name="github-repo"]');
+            if (metaRepo && metaRepo.content) {
+                return metaRepo.content;
+            }
+            
+            // 方法2: ローカルストレージから取得
+            const savedPath = getSavedRepoPath();
+            if (savedPath) return savedPath;
+            
+            // 方法3: GitHub PagesのURLから解析
+            const hostname = window.location.hostname;
+            const pathname = window.location.pathname;
+            
+            if (hostname.includes('github.io')) {
+                const pathParts = pathname.split('/').filter(Boolean);
+                if (pathParts.length >= 2) {
+                    return `${pathParts[0]}/${pathParts[1]}`;
+                } else if (pathParts.length === 1) {
+                    return `${pathParts[0]}/${pathParts[0]}.github.io`;
+                }
+            }
+            
+            // 方法4: 入力フォームを表示
+            showRepoInputForm();
+            return null;
+        }
+
+        function getSavedRepoPath() {
+            return localStorage.getItem('github_repo_path');
+        }
+
+        function showRepoInputForm() {
+            if (document.getElementById('repoInputForm')) return;
+            
+            const formHtml = `
+                <div id="repoInputForm" style="background: #f0f0f0; padding: 20px; margin: 20px 0; border-radius: 5px;">
+                    <h3>リポジトリ情報の入力が必要です</h3>
+                    <p>GitHubのリポジトリパスを入力してください（例: username/repository-name）</p>
+                    <input type="text" id="repoPathInput" placeholder="username/repository-name" style="padding: 8px; width: 300px;">
+                    <button onclick="saveRepoPath()" style="padding: 8px 16px; margin-left: 10px;">保存</button>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', formHtml);
+        }
+
+        function saveRepoPath() {
+            const input = document.getElementById('repoPathInput');
+            const repoPath = input.value.trim();
+            
+            if (repoPath && repoPath.includes('/')) {
+                localStorage.setItem('github_repo_path', repoPath);
+                document.getElementById('repoInputForm').style.display = 'none';
+                alert('リポジトリ情報を保存しました！');
+            } else {
+                alert('正しい形式で入力してください（例: username/repository-name）');
             }
         }
 
@@ -86,7 +148,8 @@
                 const repoPath = getRepoPath();
                 
                 if (!repoPath) {
-                    alert('リポジトリパスを取得できませんでした');
+                    alert('リポジトリ情報が設定されていません。入力フォームにご記入ください。');
+                    loading.style.display = 'none';
                     return;
                 }
 
@@ -106,14 +169,6 @@
             }
         }
 
-        function getRepoPath() {
-            const pathParts = window.location.pathname.split('/').filter(Boolean);
-            if (pathParts.length >= 2) {
-                return pathParts.slice(0, 2).join('/');
-            }
-            return null;
-        }
-
         function generateIssueUrl(repoPath, file, base64Data) {
             const title = `Upload: ${file.name}`;
             const body = `**ファイルデータ:**\n\n${base64Data}\n\n**ファイル名:**\n\n${file.name}\n\n*自動生成されたIssueです*`;
@@ -129,6 +184,14 @@
                 reader.onerror = error => reject(error);
             });
         }
+
+        // ページ読み込み時にリポジトリパスを確認
+        window.addEventListener('load', () => {
+            const repoPath = getRepoPath();
+            if (!repoPath) {
+                showRepoInputForm();
+            }
+        });
     </script>
 </body>
 </html>
