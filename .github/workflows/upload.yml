@@ -1,0 +1,28 @@
+name: Process Uploaded Files
+
+on:
+  push:
+    paths:
+      - 'uploads/**'
+  pull_request:
+    paths:
+      - 'uploads/**'
+
+jobs:
+  process-files:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: List uploaded files
+      run: |
+        echo "Uploaded files:"
+        find uploads -type f
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./
+        keep_files: true
