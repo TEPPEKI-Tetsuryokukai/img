@@ -15,19 +15,26 @@ jobs:
     - name: Extract file data from issue
       id: extract_data
       run: |
-        # Issue本文からファイルデータとファイル名を抽出
+        # Issue本文からファイルデータとファイル名を抽出（より堅牢に）
         BODY="${{ github.event.issue.body }}"
-        FILE_DATA=$(echo "$BODY" | grep -A1 'file_data' | tail -n1 | sed 's/^### file_data\\?//' | sed 's/^### //' | sed 's/^**//' | sed 's/**$//' | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        FILE_NAME=$(echo "$BODY" | grep -A1 'file_name' | tail -n1 | sed 's/^### file_name\\?//' | sed 's/^### //' | sed 's/^**//' | sed 's/**$//' | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        
-        # Base64データのみを抽出（data:xxx;base64, の部分を除去）
-        CLEAN_DATA=$(echo "$FILE_DATA" | sed 's/^data:[^;]*;base64,//')
-        
-        echo "file_name=$FILE_NAME" >> $GITHUB_OUTPUT
-        echo "file_data=$CLEAN_DATA" >> $GITHUB_OUTPUT
-        
-        echo "Extracted file: $FILE_NAME"
-        echo "Data length: ${#CLEAN_DATA}"
+    
+        # Markdown形式の本文からデータを抽出
+        FILE_DATA=$(echo "$BODY" | grep -A1 'file_data' | tail -n1 | sed 's/^\*\*file_data\*\*//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        FILE_NAME=$(echo "$BODY" | grep -A1 'file_name' | tail -n1 | sed 's/^\*\*file_name\*\*//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+    
+        # もし空なら別の形式を試す
+        if [ -z "$FILE_DATA" ]; then
+          FILE_DATA=$(echo "$BODY" | grep -A1 'ファイルデータ' | tail -n1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+         fi
+        if [ -z "$FILE_NAME" ]; then
+          FILE_NAME=$(echo "$BODY" | grep -A1 'ファイル名' | tail -n1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        fi
+    
+        # Base64データのみを抽出
+        CLEAN_DATA=$(echo "$FILE_DATA" | sed 's/^data:[^;]*;base64,//' | tr -d '\n' | tr -d '\r')
+    
+        echo "file_name=${FILE_NAME}" >> $GITHUB_OUTPUT
+        echo "file_data=${CLEAN_DATA}" >> $GITHUB_OUTPUT
 
     - name: Create file
       run: |
