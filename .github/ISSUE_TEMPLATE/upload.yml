@@ -1,9 +1,7 @@
----
 name: File Upload
 description: ファイルをアップロードします
 title: "Upload: [ファイル名]"
 labels: ["upload"]
-assignees: []
 body:
   - type: textarea
     id: file_data
@@ -13,7 +11,7 @@ body:
       placeholder: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
     validations:
       required: true
-  - type: textarea
+  - type: input
     id: file_name
     attributes:
       label: ファイル名
